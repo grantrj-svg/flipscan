@@ -2,7 +2,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import Quagga from '@ericblade/quagga2';
-import { supabase } from '@/lib/supabase';
 
 interface ScanResult {
   barcode: string;
@@ -11,66 +10,21 @@ interface ScanResult {
   timestamp: string;
 }
 
-const UPLOAD_BATCH_SIZE = 100;
-
 export default function Home() {
-  const [scanning, setScanning] = useState(false);
+  const [scanning, setScanning] = useState(true);
   const [flash, setFlash] = useState(false);
   const [result, setResult] = useState<ScanResult | null>(null);
-  const [localScans, setLocalScans] = useState<ScanResult[]>([]);
-  const [uploading, setUploading] = useState(false);
   const videoRef = useRef<HTMLDivElement>(null);
   const quaggaRef = useRef<any>(null);
 
-  // Load local scans
+  // Auto-start camera
   useEffect(() => {
-    const saved = localStorage.getItem('flipscan-local');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      setLocalScans(parsed);
-      if (parsed.length > 0) setResult(parsed[0]);
-    }
+    startScan();
   }, []);
-
-  // Upload when 100 reached
-  useEffect(() => {
-    if (localScans.length >= UPLOAD_BATCH_SIZE && !uploading) {
-      uploadToCloud();
-    }
-  }, [localScans.length, uploading]);
-
-  const saveLocally = (data: ScanResult) => {
-    const newEntry = { ...data, timestamp: new Date().toLocaleString('en-AU') };
-    const updated = [newEntry, ...localScans.filter(s => s.barcode !== data.barcode)].slice(0, UPLOAD_BATCH_SIZE);
-    setLocalScans(updated);
-    localStorage.setItem('flipscan-local', JSON.stringify(updated));
-    setResult(newEntry);
-  };
-
-  const uploadToCloud = async () => {
-    if (uploading || localScans.length === 0) return;
-    setUploading(true);
-
-    const dataToUpload = localScans.map(s => ({
-      barcode: s.barcode,
-      avg_price: s.avgPrice,
-      sold_count: s.soldCount,
-      timestamp: s.timestamp
-    }));
-
-    const { error } = await supabase.from('scans').insert(dataToUpload);
-
-    if (!error) {
-      localStorage.removeItem('flipscan-local');
-      setLocalScans([]);
-    }
-
-    setUploading(false);
-  };
 
   const startScan = async () => {
     if (scanning) {
-      // STOP SCANNING
+      // STOP
       if (quaggaRef.current) {
         quaggaRef.current.stop();
         quaggaRef.current = null;
@@ -79,7 +33,7 @@ export default function Home() {
       return;
     }
 
-    // START SCANNING
+    // START
     setScanning(true);
     setResult(null);
 
@@ -131,16 +85,14 @@ export default function Home() {
           const res = await fetch(`/api/ebay?barcode=${code}`);
           if (!res.ok) throw new Error();
           const ebayData = await res.json();
-          const resultData = { barcode: code, ...ebayData };
-          saveLocally(resultData);
+          const resultData = { barcode: code, ...ebayData, timestamp: new Date().toLocaleString('en-AU') };
+          setResult(resultData);
         } catch {
-          const fallback = { barcode: code, avgPrice: 'N/A', soldCount: 0, timestamp: '' };
-          saveLocally(fallback);
+          setResult({ barcode: code, avgPrice: 'N/A', soldCount: 0, timestamp: '' });
         }
       });
     };
 
-    // Small delay to ensure video element is ready
     setTimeout(initQuagga, 100);
   };
 
@@ -189,12 +141,6 @@ export default function Home() {
           </div>
         )}
 
-        <div className="text-center text-sm text-gray-600">
-          {localScans.length > 0 && (
-            <p>{localScans.length}/100 scans (auto-upload at 100)</p>
-          )}
-          {uploading && <p className="text-blue-600">Uploading to cloud...</p>}
-        </div>
       </div>
     </main>
   );
