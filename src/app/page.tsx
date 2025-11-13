@@ -112,11 +112,12 @@ export default function Home() {
           {scanning ? 'Stop Scanning' : 'Start Scanning'}
         </button>
 
-        <button
-  onClick={() => {
-    fetch('/api/ebay?barcode=5027035015140')
-      .then(r => r.json())
-      .then(data => setResult({ barcode: '5027035015140', ...data }));
+       <button
+  onClick={async () => {
+    const res = await fetch('/api/ebay?barcode=5027035015140');
+    const data = await res.json();
+    console.log('TEST RESULT:', data);
+    setResult({ barcode: '5027035015140', ...data });
   }}
   className="w-full bg-purple-600 text-white py-3 rounded-xl mb-4"
 >
