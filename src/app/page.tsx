@@ -67,8 +67,37 @@ export default function Home() {
     });
 
     Quagga.onDetected(async (data) => {
-      const code = data.codeResult.code;
-      if (!code) return;
+  console.log('BARCODE DETECTED:', data.codeResult); // ← DEBUG
+  const code = data.codeResult.code;
+  if (!code) {
+    console.log('No code found');
+    return;
+  }
+
+  console.log('Valid barcode:', code); // ← DEBUG
+  Quagga.stop();
+  setScanning(false);
+  setButtonState('success');
+
+  setFlash(true);
+  setTimeout(() => setFlash(false), 1000);
+
+  try {
+    const res = await fetch(`/api/ebay?barcode=${code}`);
+    console.log('eBay response:', res.status); // ← DEBUG
+    if (!res.ok) throw new Error();
+    const ebayData = await res.json();
+    console.log('eBay data:', ebayData); // ← DEBUG
+    const resultData = { barcode: code, ...ebayData };
+    setResult(resultData);
+    saveToHistory(resultData);
+  } catch (err) {
+    console.error('eBay failed:', err);
+    setResult({ barcode: code, avgPrice: 'N/A', soldCount: 0, timestamp: '' });
+  }
+
+  setTimeout(() => setButtonState('idle'), 1500);
+});
 
       Quagga.stop();
       setScanning(false);
