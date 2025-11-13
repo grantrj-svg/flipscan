@@ -3,6 +3,15 @@
 import { useState, useRef, useEffect } from 'react';
 import Quagga from '@ericblade/quagga2';
 
+useEffect(() => {
+  if (typeof window !== 'undefined' && !window.eruda) {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/eruda';
+    script.onload = () => (window as any).eruda.init();
+    document.body.appendChild(script);
+  }
+}, []);
+
 interface ScanResult {
   barcode: string;
   avgPrice: string;
@@ -153,6 +162,14 @@ export default function Home() {
           {buttonState === 'idle' && 'SCAN'}
           {buttonState === 'scanning' && 'SCANNING...'}
           {buttonState === 'success' && 'SCANNED!'}
+        </button>
+
+        {/* DEBUG BUTTON - REMOVE LATER */}
+        <button
+          onClick={() => (window as any).eruda?.show()}
+          className="w-full bg-gray-700 hover:bg-gray-800 text-white py-3 rounded-xl text-lg font-semibold mb-6"
+        >
+          Open Debug Console
         </button>
 
         {/* FLASH TEXT */}
