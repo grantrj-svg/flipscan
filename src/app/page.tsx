@@ -17,10 +17,17 @@ export default function Home() {
   const videoRef = useRef<HTMLDivElement>(null);
   const quaggaRef = useRef<any>(null);
 
-  // Auto-start camera
+  // AUTO-START CAMERA ON LOAD
   useEffect(() => {
-    startScan();
-  }, []);
+    if (scanning) {
+      startQuagga();
+    }
+    return () => {
+      if (quaggaRef.current) {
+        quaggaRef.current.stop();
+      }
+    };
+  }, [scanning]);
 
   const toggleScan = () => {
     if (scanning) {
@@ -34,74 +41,72 @@ export default function Home() {
       // RESUME
       setScanning(true);
       setResult(null);
-      startQuagga();
     }
   };
 
   const startQuagga = () => {
     if (!scanning) return;
 
-    try {
-      navigator.mediaDevices.getUserMedia({ video: true });
-    } catch {
-      alert('Camera blocked. Settings → Safari → Camera → Allow');
-      setScanning(false);
-      return;
-    }
+    // Request camera access
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(() => {
+        Quagga.init({
+          inputStream: {
+            name: "Live",
+            type: "LiveStream",
+            target: videoRef.current!,
+            constraints: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+            area: { top: "15%", right: "15%", left: "15%", bottom: "15%" }
+          },
+          decoder: {
+            readers: ["ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader", "code_128_reader"]
+          },
+          locate: true,
+          numOfWorkers: 2,
+          locator: { patchSize: "medium", halfSample: true },
+          frequency: 10
+        }, (err) => {
+          if (err) {
+            console.error('Quagga init error:', err);
+            alert('Scanner failed to start');
+            setScanning(false);
+            return;
+          }
+          quaggaRef.current = Quagga;
+          Quagga.start(); // START IMMEDIATELY
+        });
 
-    Quagga.init({
-      inputStream: {
-        name: "Live",
-        type: "LiveStream",
-        target: videoRef.current!,
-        constraints: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
-        area: { top: "15%", right: "15%", left: "15%", bottom: "15%" }
-      },
-      decoder: {
-        readers: ["ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader", "code_128_reader"]
-      },
-      locate: true,
-      numOfWorkers: 2,
-      locator: { patchSize: "medium", halfSample: true },
-      frequency: 10
-    }, (err) => {
-      if (err) {
-        console.error('Quagga init error:', err);
+        Quagga.onDetected(async (data) => {
+          const code = data.codeResult?.code;
+          if (!code) return;
+
+          Quagga.stop();
+
+          setFlash(true);
+          setTimeout(() => setFlash(false), 800);
+
+          try {
+            const res = await fetch(`/api/ebay?barcode=${code}`);
+            if (!res.ok) throw new Error();
+            const ebayData = await res.json();
+            const resultData = { barcode: code, ...ebayData, timestamp: new Date().toLocaleString('en-AU') };
+            setResult(resultData);
+          } catch {
+            setResult({ barcode: code, avgPrice: 'N/A', soldCount: 0, timestamp: '' });
+          }
+
+          // AUTO-RESUME
+          setTimeout(() => {
+            if (scanning) {
+              Quagga.start();
+            }
+          }, 1500);
+        });
+      })
+      .catch(() => {
+        alert('Camera blocked. Settings → Safari → Camera → Allow');
         setScanning(false);
-        return;
-      }
-      quaggaRef.current = Quagga;
-      Quagga.start();
-    });
-
-    Quagga.onDetected(async (data) => {
-      const code = data.codeResult?.code;
-      if (!code) return;
-
-      // Stop scanning briefly
-      Quagga.stop();
-
-      // Flash + result
-      setFlash(true);
-      setTimeout(() => setFlash(false), 800);
-
-      try {
-        const res = await fetch(`/api/ebay?barcode=${code}`);
-        if (!res.ok) throw new Error();
-        const ebayData = await res.json();
-        const resultData = { barcode: code, ...ebayData, timestamp: new Date().toLocaleString('en-AU') };
-        setResult(resultData);
-      } catch {
-        setResult({ barcode: code, avgPrice: 'N/A', soldCount: 0, timestamp: '' });
-      }
-
-      // AUTO-RESUME CAMERA AFTER 1.5s
-      setTimeout(() => {
-        if (scanning) {
-          Quagga.start();
-        }
-      }, 1500);
-    });
+      });
   };
 
   const isPremium = result && parseFloat(result.avgPrice) >= 150;
@@ -114,7 +119,6 @@ export default function Home() {
           FlipScan
         </h1>
 
-        {/* STOP BUTTON */}
         <button
           onClick={toggleScan}
           className={`w-full py-6 rounded-3xl text-3xl font-bold mb-6 shadow-xl transition-all ${
