@@ -1,7 +1,7 @@
 // src/app/api/ebay/route.ts
 import { NextRequest } from 'next/server';
 
-const EBAY_APP_ID = 'YOUR_EBAY_APP_ID_HERE'; // ← REPLACE LATER
+const EBAY_APP_ID = 'GrantLan-FlipScan-PRD-e6e68b715-50d13841'; // ← REPLACE LATER
 
 export async function GET(request: NextRequest) {
   const barcode = request.nextUrl.searchParams.get('barcode');
