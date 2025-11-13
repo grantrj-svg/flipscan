@@ -22,7 +22,7 @@ export default function Home() {
     startScan();
   }, []);
 
-  const toggleScan = async () => {
+  const toggleScan = () => {
     if (scanning) {
       // STOP
       if (quaggaRef.current) {
@@ -31,73 +31,77 @@ export default function Home() {
       }
       setScanning(false);
     } else {
-      // START
+      // RESUME
       setScanning(true);
       setResult(null);
+      startQuagga();
+    }
+  };
 
-      try {
-        await navigator.mediaDevices.getUserMedia({ video: true });
-      } catch {
-        alert('Camera blocked. Settings → Safari → Camera → Allow');
+  const startQuagga = () => {
+    if (!scanning) return;
+
+    try {
+      navigator.mediaDevices.getUserMedia({ video: true });
+    } catch {
+      alert('Camera blocked. Settings → Safari → Camera → Allow');
+      setScanning(false);
+      return;
+    }
+
+    Quagga.init({
+      inputStream: {
+        name: "Live",
+        type: "LiveStream",
+        target: videoRef.current!,
+        constraints: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+        area: { top: "15%", right: "15%", left: "15%", bottom: "15%" }
+      },
+      decoder: {
+        readers: ["ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader", "code_128_reader"]
+      },
+      locate: true,
+      numOfWorkers: 2,
+      locator: { patchSize: "medium", halfSample: true },
+      frequency: 10
+    }, (err) => {
+      if (err) {
+        console.error('Quagga init error:', err);
         setScanning(false);
         return;
       }
+      quaggaRef.current = Quagga;
+      Quagga.start();
+    });
 
-      const initQuagga = () => {
-        Quagga.init({
-          inputStream: {
-            name: "Live",
-            type: "LiveStream",
-            target: videoRef.current!,
-            constraints: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
-            area: { top: "15%", right: "15%", left: "15%", bottom: "15%" }
-          },
-          decoder: {
-            readers: ["ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader", "code_128_reader"]
-          },
-          locate: true,
-          numOfWorkers: 2,
-          locator: { patchSize: "medium", halfSample: true },
-          frequency: 10
-        }, (err) => {
-          if (err) {
-            console.error('Quagga init error:', err);
-            setScanning(false);
-            return;
-          }
-          quaggaRef.current = Quagga;
+    Quagga.onDetected(async (data) => {
+      const code = data.codeResult?.code;
+      if (!code) return;
+
+      // Stop scanning briefly
+      Quagga.stop();
+
+      // Flash + result
+      setFlash(true);
+      setTimeout(() => setFlash(false), 800);
+
+      try {
+        const res = await fetch(`/api/ebay?barcode=${code}`);
+        if (!res.ok) throw new Error();
+        const ebayData = await res.json();
+        const resultData = { barcode: code, ...ebayData, timestamp: new Date().toLocaleString('en-AU') };
+        setResult(resultData);
+      } catch {
+        setResult({ barcode: code, avgPrice: 'N/A', soldCount: 0, timestamp: '' });
+      }
+
+      // AUTO-RESUME CAMERA AFTER 1.5s
+      setTimeout(() => {
+        if (scanning) {
           Quagga.start();
-        });
-
-        Quagga.onDetected(async (data) => {
-          const code = data.codeResult?.code;
-          if (!code) return;
-
-          // Flash + result
-          setFlash(true);
-          setTimeout(() => setFlash(false), 800);
-
-          try {
-            const res = await fetch(`/api/ebay?barcode=${code}`);
-            if (!res.ok) throw new Error();
-            const ebayData = await res.json();
-            const resultData = { barcode: code, ...ebayData, timestamp: new Date().toLocaleString('en-AU') };
-            setResult(resultData);
-          } catch {
-            setResult({ barcode: code, avgPrice: 'N/A', soldCount: 0, timestamp: '' });
-          }
-
-          // AUTO-RESUME after 1.5s
-          setTimeout(() => {
-            if (scanning) {
-              Quagga.start();
-            }
-          }, 1500);
-        });
-      };
-
-      setTimeout(initQuagga, 100);
-    }
+        }
+      }, 1500);
+    });
   };
 
   const isPremium = result && parseFloat(result.avgPrice) >= 150;
