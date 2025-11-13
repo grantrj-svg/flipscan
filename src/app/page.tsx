@@ -178,4 +178,43 @@ export default function Home() {
           }}
           className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl text-lg font-semibold mb-6"
         >
-         
+          TEST SCAN (Godfather)
+        </button>
+
+        {flash && (
+          <div className="text-4xl font-black text-green-600 animate-pulse mb-6">
+            SCANNED
+          </div>
+        )}
+
+        {scanning && (
+          <div className="bg-black rounded-3xl overflow-hidden mb-6 shadow-2xl">
+            <div ref={videoRef} className="w-full h-80" />
+          </div>
+        )}
+
+        {result && (
+          <div className="p-8 rounded-3xl shadow-2xl bg-white mb-6">
+            <p className="text-5xl font-black mb-2">${result.avgPrice} AUD</p>
+            <p className="text-2xl mb-4">{result.soldCount} sold (6 mo)</p>
+            <p className="text-lg text-gray-700">Barcode: <code>{result.barcode}</code></p>
+          </div>
+        )}
+
+        {history.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-2xl font-bold mb-4">Recent Scans</h2>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {history.map((item, i) => (
+                <div key={i} className="bg-gray-100 p-3 rounded-lg text-left text-sm">
+                  <div className="font-mono">{item.barcode}</div>
+                  <div>${item.avgPrice} • {item.soldCount} sold • {item.timestamp}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
