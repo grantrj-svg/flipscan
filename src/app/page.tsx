@@ -3,20 +3,39 @@
 import { useState, useRef, useEffect } from 'react';
 import Quagga from '@ericblade/quagga2';
 
+interface ScanResult {
+  barcode: string;
+  avgPrice: string;
+  soldCount: number;
+  timestamp: string;
+}
+
 export default function Home() {
   const [scanning, setScanning] = useState(false);
+  const [buttonState, setButtonState] = useState<'idle' | 'scanning' | 'success'>('idle');
+  const [flash, setFlash] = useState(false);
+  const [result, setResult] = useState<ScanResult | null>(null);
+  const [history, setHistory] = useState<ScanResult[]>([]);
   const [error, setError] = useState('');
-  const [result, setResult] = useState<any>(null);
   const videoRef = useRef<HTMLDivElement>(null);
 
+  // Load history from localStorage
   useEffect(() => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setError('Camera not supported. Use Safari browser.');
-    }
+    const saved = localStorage.getItem('flipscan-history');
+    if (saved) setHistory(JSON.parse(saved));
   }, []);
+
+  // Save to history
+  const saveToHistory = (data: ScanResult) => {
+    const newEntry = { ...data, timestamp: new Date().toLocaleString('en-AU') };
+    const updated = [newEntry, ...history].slice(0, 50);
+    setHistory(updated);
+    localStorage.setItem('flipscan-history', JSON.stringify(updated));
+  };
 
   const startScan = async () => {
     setScanning(true);
+    setButtonState('scanning');
     setError('');
     setResult(null);
 
@@ -25,6 +44,7 @@ export default function Home() {
     } catch {
       setError('Camera blocked. Settings → Safari → Camera → Allow');
       setScanning(false);
+      setButtonState('idle');
       return;
     }
 
@@ -40,30 +60,47 @@ export default function Home() {
       if (err) {
         setError('Scanner failed: ' + err.message);
         setScanning(false);
+        setButtonState('idle');
         return;
       }
       Quagga.start();
     });
 
-    Quagga.onDetected((data) => {
+    Quagga.onDetected(async (data) => {
       const code = data.codeResult.code;
-      if (!code) return; // ← THIS FIXES THE NULL ERROR
+      if (!code) return;
+
       Quagga.stop();
       setScanning(false);
-      lookupEbay(code); // ← NOW SAFE
+      setButtonState('success');
+
+      // Flash "Scanned"
+      setFlash(true);
+      setTimeout(() => setFlash(false), 1000);
+
+      // Lookup eBay
+      try {
+        const res = await fetch(`/api/ebay?barcode=${code}`);
+        if (!res.ok) throw new Error();
+        const ebayData = await res.json();
+        const resultData = { barcode: code, ...ebayData };
+        setResult(resultData);
+        saveToHistory(resultData);
+      } catch {
+        setResult({ barcode: code, avgPrice: 'N/A', soldCount: 0, timestamp: '' });
+      }
+
+      // Reset button after 1.5s
+      setTimeout(() => setButtonState('idle'), 1500);
     });
   };
 
-  const lookupEbay = async (barcode: string) => {
-    try {
-      const res = await fetch(`/api/ebay?barcode=${barcode}`);
-      if (!res.ok) throw new Error('Failed');
-      const data = await res.json();
-      setResult({ ...data, barcode });
-    } catch {
-      setResult({ error: "eBay lookup failed" });
-    }
-  };
+  // Button styles
+  const buttonClass = {
+    idle: 'bg-red-600 hover:bg-red-700 text-white',
+    scanning: 'bg-yellow-500 hover:bg-yellow-600 text-black',
+    success: 'bg-green-600 hover:bg-green-700 text-white'
+  }[buttonState];
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-emerald-50 to-white p-4">
@@ -75,36 +112,55 @@ export default function Home() {
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
             {error}
-            <br />
-            <small>iPhone tip: Settings → Safari → Camera → Allow</small>
           </div>
         )}
 
+        {/* SCAN BUTTON */}
         <button
           onClick={startScan}
           disabled={scanning}
-          className="w-full bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white py-6 rounded-2xl text-xl font-bold mb-6 shadow-2xl disabled:opacity-50"
+          className={`w-full ${buttonClass} py-8 rounded-3xl text-3xl font-bold mb-6 shadow-2xl transition-all duration-300 disabled:opacity-50`}
         >
-          {scanning ? "Scanning..." : "Scan DVD or PS Game"}
+          {buttonState === 'idle' && 'SCAN'}
+          {buttonState === 'scanning' && 'SCANNING...'}
+          {buttonState === 'success' && 'SCANNED!'}
         </button>
 
+        {/* FLASH TEXT */}
+        {flash && (
+          <div className="text-4xl font-black text-green-600 animate-pulse mb-6">
+            SCANNED
+          </div>
+        )}
+
+        {/* CAMERA */}
         {scanning && (
-          <div className="bg-black rounded-2xl overflow-hidden mb-6 shadow-2xl">
+          <div className="bg-black rounded-3xl overflow-hidden mb-6 shadow-2xl">
             <div ref={videoRef} className="w-full h-80" />
           </div>
         )}
 
-        {result && !result.error && (
-          <div className="p-8 rounded-2xl shadow-2xl bg-white">
+        {/* RESULT */}
+        {result && (
+          <div className="p-8 rounded-3xl shadow-2xl bg-white mb-6">
             <p className="text-5xl font-black mb-2">${result.avgPrice} AUD</p>
             <p className="text-2xl mb-4">{result.soldCount} sold (6 mo)</p>
             <p className="text-lg text-gray-700">Barcode: <code>{result.barcode}</code></p>
           </div>
         )}
 
-        {result?.error && (
-          <div className="bg-red-100 border-4 border-red-400 p-8 rounded-2xl text-red-700 text-center">
-            {result.error}
+        {/* HISTORY */}
+        {history.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-2xl font-bold mb-4">Recent Scans</h2>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {history.map((item, i) => (
+                <div key={i} className="bg-gray-100 p-3 rounded-lg text-left text-sm">
+                  <div className="font-mono">{item.barcode}</div>
+                  <div>${item.avgPrice} • {item.soldCount} sold • {item.timestamp}</div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
