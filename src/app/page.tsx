@@ -3,15 +3,6 @@
 import { useState, useRef, useEffect } from 'react';
 import Quagga from '@ericblade/quagga2';
 
-useEffect(() => {
-  if (typeof window !== 'undefined' && !window.eruda) {
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/eruda';
-    script.onload = () => (window as any).eruda.init();
-    document.body.appendChild(script);
-  }
-}, []);
-
 interface ScanResult {
   barcode: string;
   avgPrice: string;
@@ -32,6 +23,16 @@ export default function Home() {
   useEffect(() => {
     const saved = localStorage.getItem('flipscan-history');
     if (saved) setHistory(JSON.parse(saved));
+  }, []);
+
+  // Eruda debug console (for iPhone)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !(window as any).eruda) {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/eruda';
+      script.onload = () => (window as any).eruda.init();
+      document.body.appendChild(script);
+    }
   }, []);
 
   // Save to history
@@ -76,59 +77,32 @@ export default function Home() {
     });
 
     Quagga.onDetected(async (data) => {
-  console.log('BARCODE DETECTED:', data.codeResult); // ← DEBUG
-  const code = data.codeResult.code;
-  if (!code) {
-    console.log('No code found');
-    return;
-  }
+      console.log('BARCODE DETECTED:', data.codeResult);
+      const code = data.codeResult.code;
+      if (!code) return;
 
-  console.log('Valid barcode:', code); // ← DEBUG
-  Quagga.stop();
-  setScanning(false);
-  setButtonState('success');
-
-  setFlash(true);
-  setTimeout(() => setFlash(false), 1000);
-
-  try {
-    const res = await fetch(`/api/ebay?barcode=${code}`);
-    console.log('eBay response:', res.status); // ← DEBUG
-    if (!res.ok) throw new Error();
-    const ebayData = await res.json();
-    console.log('eBay data:', ebayData); // ← DEBUG
-    const resultData = { barcode: code, ...ebayData };
-    setResult(resultData);
-    saveToHistory(resultData);
-  } catch (err) {
-    console.error('eBay failed:', err);
-    setResult({ barcode: code, avgPrice: 'N/A', soldCount: 0, timestamp: '' });
-  }
-
-  setTimeout(() => setButtonState('idle'), 1500);
-});
-
+      console.log('Valid barcode:', code);
       Quagga.stop();
       setScanning(false);
       setButtonState('success');
 
-      // Flash "Scanned"
       setFlash(true);
       setTimeout(() => setFlash(false), 1000);
 
-      // Lookup eBay
       try {
         const res = await fetch(`/api/ebay?barcode=${code}`);
+        console.log('eBay response:', res.status);
         if (!res.ok) throw new Error();
         const ebayData = await res.json();
+        console.log('eBay data:', ebayData);
         const resultData = { barcode: code, ...ebayData };
         setResult(resultData);
         saveToHistory(resultData);
-      } catch {
+      } catch (err) {
+        console.error('eBay failed:', err);
         setResult({ barcode: code, avgPrice: 'N/A', soldCount: 0, timestamp: '' });
       }
 
-      // Reset button after 1.5s
       setTimeout(() => setButtonState('idle'), 1500);
     });
   };
