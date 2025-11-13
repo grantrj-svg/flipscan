@@ -112,6 +112,17 @@ export default function Home() {
           {scanning ? 'Stop Scanning' : 'Start Scanning'}
         </button>
 
+        <button
+  onClick={() => {
+    fetch('/api/ebay?barcode=5027035015140')
+      .then(r => r.json())
+      .then(data => setResult({ barcode: '5027035015140', ...data }));
+  }}
+  className="w-full bg-purple-600 text-white py-3 rounded-xl mb-4"
+>
+  TEST EBAY (Godfather)
+</button>
+
         {/* CAMERA */}
         {scanning && (
           <div className="bg-black rounded-3xl overflow-hidden mb-4 shadow-2xl">
