@@ -1,3 +1,4 @@
+// src/app/page.tsx
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import Quagga from '@ericblade/quagga2';
@@ -8,9 +9,8 @@ export default function Home() {
   const [result, setResult] = useState<any>(null);
   const videoRef = useRef<HTMLDivElement>(null);
 
-  // iPhone Safari fix: Check camera support
   useEffect(() => {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    if (!navigator.mediaDevices?.getUserMedia) {
       setError('Camera not supported. Use Safari browser.');
     }
   }, []);
@@ -21,10 +21,9 @@ export default function Home() {
     setResult(null);
 
     try {
-      // Test camera access first
-      await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    } catch (err) {
-      setError('Camera access denied. Go to Settings > Safari > Camera > Allow');
+      await navigator.mediaDevices.getUserMedia({ video: true });
+    } catch {
+      setError('Camera blocked. Settings → Safari → Camera → Allow');
       setScanning(false);
       return;
     }
@@ -34,24 +33,12 @@ export default function Home() {
         name: "Live",
         type: "LiveStream",
         target: videoRef.current!,
-        constraints: {
-          facingMode: "environment",
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          // iPhone fixes
-          aspectRatio: { min: 1, max: 2 }
-        },
-        area: { top: '10%', right: '10%', left: '10%', bottom: '10%' }
+        constraints: { facingMode: "environment" }
       },
-      decoder: {
-        readers: ["ean_reader", "upc_reader", "ean_8_reader"],
-        multiple: false
-      },
-      locate: true,
-      numOfWorkers: 2 // Faster on mobile
+      decoder: { readers: ["ean_reader", "upc_reader"] }
     }, (err) => {
       if (err) {
-        setError('Scanner init failed: ' + err);
+        setError('Scanner failed: ' + err.message);
         setScanning(false);
         return;
       }
@@ -60,15 +47,17 @@ export default function Home() {
 
     Quagga.onDetected((data) => {
       const code = data.codeResult.code;
+      if (!code) return; // ← THIS FIXES THE NULL ERROR
       Quagga.stop();
       setScanning(false);
-      lookupEbay(code);
+      lookupEbay(code); // ← NOW SAFE
     });
   };
 
   const lookupEbay = async (barcode: string) => {
     try {
       const res = await fetch(`/api/ebay?barcode=${barcode}`);
+      if (!res.ok) throw new Error('Failed');
       const data = await res.json();
       setResult({ ...data, barcode });
     } catch {
@@ -76,19 +65,10 @@ export default function Home() {
     }
   };
 
-  const getCard = (data: any) => {
-    const avg = parseFloat(data.avgPrice || 0);
-    const count = data.soldCount || 0;
-    if (count >= 5 && avg >= 150) return { color: 'bg-gradient-to-r from-yellow-200 to-yellow-400 border-4 border-yellow-600', text: '⭐ PREMIUM GEM!' };
-    if (count >= 3 && avg >= 50) return { color: 'bg-green-100 border-4 border-green-600', text: '✅ BUY – Good Flip' };
-    if (count >= 1 && avg >= 20) return { color: 'bg-yellow-100 border-4 border-yellow-600', text: '❓ Maybe' };
-    return { color: 'bg-red-100 border-4 border-red-600', text: "❌ Don't Bother" };
-  };
-
   return (
     <main className="min-h-screen bg-gradient-to-b from-emerald-50 to-white p-4">
-      <div className="max-w-md mx-auto">
-        <h1 className="text-4xl font-bold text-center mb-8 bg-gradient-to-r from-emerald-600 to-green-600 bg-clip-text text-transparent">
+      <div className="max-w-md mx-auto text-center">
+        <h1 className="text-4xl font-bold mb-8 bg-gradient-to-r from-emerald-600 to-green-600 bg-clip-text text-transparent">
           FlipScan
         </h1>
 
@@ -103,26 +83,21 @@ export default function Home() {
         <button
           onClick={startScan}
           disabled={scanning}
-          className="w-full bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white py-6 rounded-2xl text-xl font-bold mb-6 shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white py-6 rounded-2xl text-xl font-bold mb-6 shadow-2xl disabled:opacity-50"
         >
-          {scanning ? "🔦 Scanning..." : "📱 Scan DVD or PS Game"}
+          {scanning ? "Scanning..." : "Scan DVD or PS Game"}
         </button>
 
         {scanning && (
           <div className="bg-black rounded-2xl overflow-hidden mb-6 shadow-2xl">
-            <div ref={videoRef} className="w-full h-80 relative">
-              <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-20">
-                <div className="scanner-frame w-48 h-24 border-4 border-green-400 rounded-lg animate-pulse"></div>
-              </div>
-            </div>
+            <div ref={videoRef} className="w-full h-80" />
           </div>
         )}
 
         {result && !result.error && (
-          <div className={`p-8 rounded-2xl shadow-2xl ${getCard(result).color}`}>
+          <div className="p-8 rounded-2xl shadow-2xl bg-white">
             <p className="text-5xl font-black mb-2">${result.avgPrice} AUD</p>
             <p className="text-2xl mb-4">{result.soldCount} sold (6 mo)</p>
-            <p className="text-3xl font-bold mb-4">{getCard(result).text}</p>
             <p className="text-lg text-gray-700">Barcode: <code>{result.barcode}</code></p>
           </div>
         )}
@@ -132,18 +107,6 @@ export default function Home() {
             {result.error}
           </div>
         )}
-
-        {/* Manual entry fallback */}
-        <div className="mt-8 p-4 bg-blue-50 rounded-xl">
-          <input
-            type="text"
-            placeholder="Or type barcode manually..."
-            className="w-full p-4 border-2 border-blue-300 rounded-xl text-lg"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') lookupEbay(e.currentTarget.value);
-            }}
-          />
-        </div>
       </div>
     </main>
   );
