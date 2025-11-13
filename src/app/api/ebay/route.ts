@@ -1,7 +1,7 @@
 // src/app/api/ebay/route.ts
 import { NextRequest } from 'next/server';
 
-const EBAY_APP_ID = 'GrantLan-FlipScan-PRD-e6e68b715-50d13841'; // ← YOUR KEY HERE
+const EBAY_APP_ID = 'GrantLan-FlipScan-PRD-ee6e68b715-50d13841'; // ← YOUR KEY HERE
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
